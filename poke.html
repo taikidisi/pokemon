@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream Pokémon Overlay</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Press Start 2P & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Press+Start+2P&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: transparent;
+            overflow: hidden;
+        }
+
+        .font-pixel {
+            font-family: 'Press Start 2P', monospace;
+        }
+
+        /* Glassmorphism & Cyber Retro Glows */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5),
+                        inset 0 0 15px rgba(59, 130, 246, 0.15);
+        }
+
+        .pixel-border {
+            box-shadow: 
+                -4px 0 0 0 #000,
+                4px 0 0 0 #000,
+                0 -4px 0 0 #000,
+                0 4px 0 0 #000;
+        }
+
+        /* Sprite Float & Bounce Animation */
+        @keyframes floatSlow {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-8px) rotate(1deg); }
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { filter: drop-shadow(0 0 8px rgba(234, 179, 8, 0.4)); }
+            50% { filter: drop-shadow(0 0 16px rgba(234, 179, 8, 0.8)); }
+        }
+
+        .animate-float {
+            animation: floatSlow 3.5s ease-in-out infinite;
+        }
+
+        .shiny-glow {
+            animation: pulseGlow 2s ease-in-out infinite;
+        }
+
+        /* Type Colors */
+        .bg-type-fire { background: linear-gradient(135deg, #f97316, #dc2626); }
+        .bg-type-water { background: linear-gradient(135deg, #0ea5e9, #2563eb); }
+        .bg-type-grass { background: linear-gradient(135deg, #22c55e, #15803d); }
+        .bg-type-electric { background: linear-gradient(135deg, #eab308, #ca8a04); text-color: #000; }
+        .bg-type-psychic { background: linear-gradient(135deg, #ec4899, #be185d); }
+        .bg-type-ice { background: linear-gradient(135deg, #06b6d4, #0891b2); }
+        .bg-type-dragon { background: linear-gradient(135deg, #6366f1, #4338ca); }
+        .bg-type-dark { background: linear-gradient(135deg, #334155, #0f172a); }
+        .bg-type-fairy { background: linear-gradient(135deg, #f472b6, #db2777); }
+        .bg-type-normal { background: linear-gradient(135deg, #94a3b8, #64748b); }
+        .bg-type-ghost { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
+        .bg-type-poison { background: linear-gradient(135deg, #a855f7, #7e22ce); }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between p-4 selection:bg-yellow-400 selection:text-black">
+
+    <!-- OVERLAY CARD (Top Left / Stream Position) -->
+    <div id="overlay-container" class="relative z-10 transition-all duration-500 max-w-sm">
+        <div id="overlay-card" class="glass-panel rounded-2xl p-4 text-white relative overflow-hidden transition-all duration-300">
+            
+            <!-- Shiny Stars Particle Effect Layer -->
+            <div id="shiny-sparkles" class="hidden absolute inset-0 pointer-events-none z-0">
+                <i class="fa-solid fa-sparkles text-yellow-300 absolute top-2 left-4 text-xs animate-ping"></i>
+                <i class="fa-solid fa-star text-yellow-200 absolute top-8 right-6 text-xs animate-bounce"></i>
+                <i class="fa-solid fa-sparkles text-amber-300 absolute bottom-3 left-12 text-xs animate-pulse"></i>
+            </div>
+
+            <!-- Top Header (Status Badge & Level) -->
+            <div class="flex items-center justify-between mb-2 relative z-10">
+                <div class="flex items-center gap-1.5 bg-black/40 backdrop-blur px-2.5 py-1 rounded-full border border-white/10 text-xs font-semibold">
+                    <span id="catch-status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="catch-status-text" class="tracking-wide uppercase text-[10px] text-gray-300">Active Companion</span>
+                </div>
+                <div class="flex items-center gap-1 bg-yellow-500/20 text-yellow-300 px-2.5 py-0.5 rounded-md border border-yellow-500/30 font-pixel text-[10px]">
+                    <span>LVL</span>
+                    <span id="pokemon-level">50</span>
+                </div>
+            </div>
+
+            <!-- Main Content Grid -->
+            <div class="flex items-center gap-4 relative z-10">
+                <!-- Sprite Display with Hologram Circle -->
+                <div class="relative flex-shrink-0 w-24 h-24 flex items-center justify-center">
+                    <div class="absolute inset-0 bg-blue-500/20 rounded-full blur-md animate-pulse"></div>
+                    <div class="absolute inset-1 border border-cyan-400/30 rounded-full border-dashed animate-spin" style="animation-duration: 20s;"></div>
+                    <img id="pokemon-sprite" 
+                         src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png" 
+                         alt="Pokemon Sprite" 
+                         class="w-22 h-22 object-contain relative z-10 animate-float drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)] transition-all duration-500"
+                         onerror="this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png'">
+                </div>
+
+                <!-- Info Details -->
+                <div class="flex-1 min-w-0">
+                    <!-- Shiny Badge -->
+                    <div id="shiny-tag" class="hidden inline-flex items-center gap-1 text-[9px] font-pixel bg-gradient-to-r from-yellow-400 to-amber-500 text-black px-1.5 py-0.5 rounded mb-1 font-bold">
+                        <i class="fa-solid fa-star"></i> SHINY
+                    </div>
+
+                    <!-- Name -->
+                    <h2 id="pokemon-name" class="text-xl font-extrabold capitalize tracking-wide truncate text-white drop-shadow">
+                        Pikachu
+                    </h2>
+
+                    <!-- Types -->
+                    <div id="pokemon-types" class="flex flex-wrap gap-1.5 my-1.5">
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider text-white bg-type-electric shadow-sm">
+                            Electric
+                        </span>
+                    </div>
+
+                    <!-- Custom Trainer / Note Field -->
+                    <div class="text-xs text-gray-300 font-medium truncate flex items-center gap-1">
+                        <i class="fa-solid fa-user-ninja text-gray-400 text-[10px]"></i>
+                        <span id="pokemon-trainer" class="text-gray-400 italic">Caught by: <strong class="text-cyan-300 non-italic">Streamer</strong></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sub-stat / Goal Bar (Optional Extra Info) -->
+            <div class="mt-3 pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-gray-400 relative z-10">
+                <div class="flex items-center gap-1">
+                    <i class="fa-solid fa-heart text-red-400 text-[10px]"></i>
+                    <span id="pokemon-hp">HP: 100/100</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <i class="fa-solid fa-tag text-emerald-400 text-[10px]"></i>
+                    <span id="pokemon-custom-tag" class="font-mono text-gray-300">#0025</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTROL PANEL TOGGLE BUTTON (Hidden on OBS output by default via hovering or bottom dock) -->
+    <div id="settings-dock" class="fixed bottom-4 right-4 z-50">
+        <button onclick="toggleSettingsModal()" class="bg-slate-900/90 hover:bg-slate-800 text-white p-3 rounded-full shadow-2xl border border-slate-700 transition transform hover:scale-110 flex items-center justify-center">
+            <i class="fa-solid fa-gear text-lg text-cyan-400"></i>
+        </button>
+    </div>
+
+    <!-- CONFIGURATION MODAL -->
+    <div id="settings-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl text-white overflow-hidden">
+            
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-cyan-400"></i>
+                    <h3 class="font-bold text-lg">Overlay Configuration & Setup</h3>
+                </div>
+                <button onclick="toggleSettingsModal()" class="text-gray-400 hover:text-white text-xl">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body (Scrollable) -->
+            <div class="p-6 overflow-y-auto space-y-6 text-sm">
+
+                <!-- 1. Data Source Config -->
+                <div class="space-y-3">
+                    <label class="font-semibold text-cyan-400 block uppercase text-xs tracking-wider">1. Data Connection</label>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Google Sheets Web App URL (Apps Script GET endpoint)</label>
+                        <input type="url" id="config-sheets-url" placeholder="https://script.google.com/macros/s/.../exec" 
+                               class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-500 font-mono">
+                        <p class="text-[11px] text-gray-500 mt-1">Leave empty to use built-in continuous demo Pokémon rotation.</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">Refresh Interval (Seconds)</label>
+                            <input type="number" id="config-interval" value="10" min="3" max="300"
+                                   class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">Display Mode</label>
+                            <select id="config-mode" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white">
+                                <option value="rotate">Rotate through Sheet Rows</option>
+                                <option value="random">Random Row from Sheet</option>
+                                <option value="last">Always Show Latest Entry</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Appearance Tweaks -->
+                <div class="space-y-3 pt-4 border-t border-slate-800">
+                    <label class="font-semibold text-cyan-400 block uppercase text-xs tracking-wider">2. Aesthetic Controls</label>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="config-anim" checked class="rounded bg-slate-950 border-slate-700 text-cyan-500">
+                            <span class="text-xs">Sprite Floating Animation</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="config-compact" class="rounded bg-slate-950 border-slate-700 text-cyan-500">
+                            <span class="text-xs">Compact Mode (Minimalist HUD)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 3. Instructions & Google Script Code Guide -->
+                <div class="space-y-3 pt-4 border-t border-slate-800">
+                    <label class="font-semibold text-cyan-400 block uppercase text-xs tracking-wider">3. Google Sheets Integration Guide</label>
+                    <p class="text-xs text-gray-300 leading-relaxed">
+                        To connect your live Google Sheet, follow these 3 quick steps:
+                    </p>
+                    <ol class="list-decimal list-inside text-xs text-gray-400 space-y-1.5 pl-1">
+                        <li>Create a Sheet with columns: <code class="text-amber-300">Name</code>, <code class="text-amber-300">Sprite</code>, <code class="text-amber-300">Type</code>, <code class="text-amber-300">Level</code>, <code class="text-amber-300">Trainer</code>, <code class="text-amber-300">Shiny</code> (TRUE/FALSE).</li>
+                        <li>Go to <strong>Extensions &gt; Apps Script</strong> and paste the snippet below.</li>
+                        <li>Click <strong>Deploy &gt; New Deployment &gt; Web App</strong> (Set access to: <em>"Anyone"</em>).</li>
+                    </ol>
+
+                    <!-- Code Snippet Box -->
+                    <div class="relative">
+                        <pre class="bg-slate-950 p-3 rounded-lg text-[10px] font-mono text-emerald-400 overflow-x-auto border border-slate-800 max-h-40">
+function doGet() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  var headers = data.shift();
+  var result = data.map(function(row) {
+    var obj = {};
+    headers.forEach(function(header, i) {
+      obj[header.toLowerCase()] = row[i];
+    });
+    return obj;
+  });
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
+}</pre>
+                        <button onclick="copyAppsScriptCode()" class="absolute top-2 right-2 bg-slate-800 hover:bg-slate-700 text-xs px-2 py-1 rounded text-gray-300 border border-slate-600">
+                            <i class="fa-regular fa-copy"></i> Copy
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4. GitHub & OBS Setup Info -->
+                <div class="space-y-2 pt-4 border-t border-slate-800 text-xs text-gray-400">
+                    <label class="font-semibold text-cyan-400 block uppercase text-xs tracking-wider">4. OBS & GitHub Pages Setup</label>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li><strong>GitHub:</strong> Upload this repository to GitHub, enable GitHub Pages under settings.</li>
+                        <li><strong>OBS Studio:</strong> Add a new <strong>Browser Source</strong>, paste your hosted URL, set width to 500 & height to 400. Check <em>"Shutdown source when not visible"</em>.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-6 py-4 border-t border-slate-800 bg-slate-950/50 flex justify-between items-center">
+                <button onclick="triggerManualFetch()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg transition">
+                    <i class="fa-solid fa-arrows-rotate mr-1"></i> Test Fetch Now
+                </button>
+                <button onclick="saveSettings()" class="px-5 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-xs font-bold text-white rounded-lg shadow-lg transition">
+                    Save & Apply
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT OVERLAY LOGIC -->
+    <script>
+        // Fallback / Demo Pokémon Dataset
+        const MOCK_POKEMON_LIST = [
+            { name: "Pikachu", sprite: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png", type: "Electric", level: 50, trainer: "AshKetchum", shiny: false, hp: "120/120", tag: "#0025" },
+            { name: "Charizard", sprite: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/6.png", type: "Fire, Flying", level: 85, trainer: "Red", shiny: true, hp: "280/280", tag: "#0006" },
+            { name: "Gengar", sprite: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/94.png", type: "Ghost, Poison", level: 62, trainer: "ShadowStreamer", shiny: false, hp: "190/190", tag: "#0094" },
+            { name: "Lucario", sprite: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/448.png", type: "Fighting, Steel", level: 70, trainer: "Cynthia", shiny: true, hp: "220/220", tag: "#0448" },
+            { name: "Sylveon", sprite: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/700.png", type: "Fairy", level: 45, trainer: "Serena", shiny: false, hp: "165/165", tag: "#0700" },
+            { name: "Rayquaza", sprite: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/384.png", type: "Dragon, Flying", level: 100, trainer: "MasterVIP", shiny: true, hp: "350/350", tag: "#0384" }
+        ];
+
+        // State Variables
+        let pokemonData = [...MOCK_POKEMON_LIST];
+        let currentIndex = 0;
+        let fetchTimer = null;
+        let config = {
+            sheetUrl: '',
+            interval: 10,
+            mode: 'rotate',
+            animate: true,
+            compact: false
+        };
+
+        // Initialize App on Load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadConfigFromUrlOrStorage();
+            updateOverlayUI(pokemonData[0]);
+            startPolling();
+        });
+
+        // Parse URL Parameters (Useful for URL configuration directly in OBS browser source)
+        function loadConfigFromUrlOrStorage() {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            config.sheetUrl = urlParams.get('sheet') || localStorage.getItem('poke_sheetUrl') || '';
+            config.interval = parseInt(urlParams.get('interval')) || parseInt(localStorage.getItem('poke_interval')) || 10;
+            config.mode = urlParams.get('mode') || localStorage.getItem('poke_mode') || 'rotate';
+            config.animate = urlParams.has('animate') ? urlParams.get('animate') !== 'false' : true;
+
+            // Update modal UI inputs
+            document.getElementById('config-sheets-url').value = config.sheetUrl;
+            document.getElementById('config-interval').value = config.interval;
+            document.getElementById('config-mode').value = config.mode;
+            document.getElementById('config-anim').checked = config.animate;
+        }
+
+        // Main Fetch Logic
+        async function fetchPokemonData() {
+            if (!config.sheetUrl) {
+                // Use Mock Data
+                pokemonData = MOCK_POKEMON_LIST;
+                advanceDisplay();
+                return;
+            }
+
+            try {
+                const res = await fetch(config.sheetUrl);
+                if (!res.ok) throw new Error("HTTP error " + res.status);
+                const json = await res.json();
+
+                if (Array.isArray(json) && json.length > 0) {
+                    pokemonData = json.map((item, idx) => ({
+                        name: item.name || item.pokemon || `Mon #${idx+1}`,
+                        sprite: item.sprite || item.image || item.url || `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${(idx % 151) + 1}.png`,
+                        type: item.type || "Normal",
+                        level: item.level || item.lvl || 50,
+                        trainer: item.trainer || item.caughtby || "Streamer",
+                        shiny: String(item.shiny).toLowerCase() === 'true' || item.shiny === true || item.shiny === 1,
+                        hp: item.hp || "100/100",
+                        tag: item.tag || `#${String(idx+1).padStart(4, '0')}`
+                    }));
+                    advanceDisplay();
+                }
+            } catch (err) {
+                console.warn("Failed fetching Google Sheet data, using fallback mock data:", err);
+                pokemonData = MOCK_POKEMON_LIST;
+                advanceDisplay();
+            }
+        }
+
+        // Advance Current Displayed Pokémon
+        function advanceDisplay() {
+            if (pokemonData.length === 0) return;
+
+            if (config.mode === 'random') {
+                currentIndex = Math.floor(Math.random() * pokemonData.length);
+            } else if (config.mode === 'last') {
+                currentIndex = pokemonData.length - 1;
+            } else { // rotate
+                currentIndex = (currentIndex + 1) % pokemonData.length;
+            }
+
+            updateOverlayUI(pokemonData[currentIndex]);
+        }
+
+        // Render Data into HTML Card with Transition
+        function updateOverlayUI(data) {
+            const card = document.getElementById('overlay-card');
+            const sprite = document.getElementById('pokemon-sprite');
+
+            // Quick scale fade transition
+            card.classList.add('scale-95', 'opacity-80');
+
+            setTimeout(() => {
+                // Update text & values
+                document.getElementById('pokemon-name').innerText = data.name;
+                document.getElementById('pokemon-level').innerText = data.level;
+                document.getElementById('pokemon-trainer').innerHTML = `Caught by: <strong class="text-cyan-300 non-italic">${data.trainer}</strong>`;
+                document.getElementById('pokemon-hp').innerText = `HP: ${data.hp || '100/100'}`;
+                document.getElementById('pokemon-custom-tag').innerText = data.tag || '#0000';
+
+                // Image Sprite Handling
+                sprite.src = data.sprite;
+
+                // Handle Types (Supports comma separated string like "Fire, Flying")
+                const typesContainer = document.getElementById('pokemon-types');
+                typesContainer.innerHTML = '';
+                const typesArray = String(data.type).split(',').map(t => t.trim());
+                
+                typesArray.forEach(t => {
+                    const typeLower = t.toLowerCase();
+                    const badge = document.createElement('span');
+                    badge.className = `px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider text-white bg-type-${typeLower} shadow-sm`;
+                    badge.innerText = t;
+                    typesContainer.appendChild(badge);
+                });
+
+                // Shiny Toggle & Special Glow FX
+                const shinyTag = document.getElementById('shiny-tag');
+                const shinySparkles = document.getElementById('shiny-sparkles');
+                if (data.shiny) {
+                    shinyTag.classList.remove('hidden');
+                    shinySparkles.classList.remove('hidden');
+                    sprite.classList.add('shiny-glow');
+                } else {
+                    shinyTag.classList.add('hidden');
+                    shinySparkles.classList.add('hidden');
+                    sprite.classList.remove('shiny-glow');
+                }
+
+                // Animation toggle
+                if (config.animate) {
+                    sprite.classList.add('animate-float');
+                } else {
+                    sprite.classList.remove('animate-float');
+                }
+
+                card.classList.remove('scale-95', 'opacity-80');
+            }, 150);
+        }
+
+        // Polling Timer Management
+        function startPolling() {
+            if (fetchTimer) clearInterval(fetchTimer);
+            fetchPokemonData(); // Initial call
+            fetchTimer = setInterval(fetchPokemonData, Math.max(config.interval, 3) * 1000);
+        }
+
+        // Modal Controls
+        function toggleSettingsModal() {
+            const modal = document.getElementById('settings-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        function saveSettings() {
+            config.sheetUrl = document.getElementById('config-sheets-url').value.trim();
+            config.interval = parseInt(document.getElementById('config-interval').value) || 10;
+            config.mode = document.getElementById('config-mode').value;
+            config.animate = document.getElementById('config-anim').checked;
+
+            // Persist locally
+            localStorage.setItem('poke_sheetUrl', config.sheetUrl);
+            localStorage.setItem('poke_interval', config.interval);
+            localStorage.setItem('poke_mode', config.mode);
+
+            toggleSettingsModal();
+            startPolling();
+        }
+
+        function triggerManualFetch() {
+            fetchPokemonData();
+        }
+
+        function copyAppsScriptCode() {
+            const code = `function doGet() {\n  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();\n  var data = sheet.getDataRange().getValues();\n  var headers = data.shift();\n  var result = data.map(function(row) {\n    var obj = {};\n    headers.forEach(function(header, i) {\n      obj[header.toLowerCase()] = row[i];\n    });\n    return obj;\n  });\n  return ContentService.createTextOutput(JSON.stringify(result))\n    .setMimeType(ContentService.MimeType.JSON);\n}`;
+            
+            const tempElem = document.createElement('textarea');
+            tempElem.value = code;
+            document.body.appendChild(tempElem);
+            tempElem.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempElem);
+
+            // Simple notification message
+            const btn = event.currentTarget;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<i class="fa-solid fa-check text-emerald-400"></i> Copied!`;
+            setTimeout(() => btn.innerHTML = originalText, 2000);
+        }
+    </script>
+</body>
+</html>
