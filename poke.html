@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Pokémon Overlay - Etapas 2 y 3</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            align-items: flex-end;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.5s ease-in-out;
+        }
+
+        .container.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .pokemon-card {
+            background: rgba(15, 23, 42, 0.9);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            padding: 15px;
+            width: 180px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            backdrop-filter: blur(8px);
+        }
+
+        .pokemon-card.etapa2 { border-color: #facc15; } /* Final */
+        .pokemon-card.etapa3 { border-color: #c084fc; } /* Legendario */
+
+        .badge {
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+            padding: 3px 8px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+
+        .etapa2 .badge { background: #ca8a04; }
+        .etapa3 .badge { background: #9333ea; }
+
+        .sprite-container {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sprite-container img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            filter: drop-shadow(0 5px 5px rgba(0,0,0,0.5));
+        }
+
+        .info h3 {
+            margin: 10px 0 2px 0;
+            color: #ffffff;
+            font-size: 15px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .info span {
+            color: #94a3b8;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="trio-container">
+        <!-- Las cartas se inyectan aquí -->
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const SHEET_API = urlParams.get('sheetUrl');
+
+        async function loadOverlayData() {
+            if (!SHEET_API) return;
+
+            try {
+                let response = await fetch(SHEET_API + "?modo=overlay");
+                let data = await response.json();
+                
+                renderCards(data);
+            } catch (error) {
+                console.error("Error al cargar el overlay:", error);
+            }
+        }
+
+        function renderCards(data) {
+            const container = document.getElementById('trio-container');
+            container.innerHTML = '';
+
+            let items = [];
+            if (data.etapa2) items.push({ type: 'etapa2', label: 'Etapa Final', data: data.etapa2 });
+            if (data.etapa3) items.push({ type: 'etapa3', label: 'Legendario / Singular', data: data.etapa3 });
+
+            if (items.length === 0) return;
+
+            items.forEach(item => {
+                let pokeId = item.data.numero;
+                let spriteUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokeId}.png`;
+
+                let card = document.createElement('div');
+                card.className = `pokemon-card ${item.type}`;
+                card.innerHTML = `
+                    <div class="badge">${item.label}</div>
+                    <div class="sprite-container">
+                        <img src="${spriteUrl}" alt="${item.data.pokemon}">
+                    </div>
+                    <div class="info">
+                        <h3>#${item.data.numero} ${item.data.pokemon}</h3>
+                        <span>Etapa ${item.data.etapa}</span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            // Mostrar con animación
+            container.classList.add('show');
+
+            // Desaparece solo después de 15 segundos para dar espacio al timer
+            setTimeout(() => {
+                container.classList.remove('show');
+            }, 15000);
+        }
+
+        // Carga inicial
+        loadOverlayData();
+
+        // Intervalo para que vuelva a consultar según el timer configurado (ej: cada 5 minutos / 300000ms)
+        setInterval(loadOverlayData, 300000); 
+    </script>
+</body>
+</html>
