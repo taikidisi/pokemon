@@ -198,45 +198,45 @@ async function escapar(d) {
 function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
 
 /* ======== LÓGICA ======== */
+// No depende del reloj de la PC: el tiempo para escaparse se cuenta desde que ESTE overlay vio aparecer al pokémon.
 var idActual = null;   // spawn que se está manejando
-var fase = "";         // "visible" = en pantalla esperando; "fin" = ya terminó (atrapado/escapado/ignorado)
-var ocupadoDesde = 0;  // 0 = libre; si no, cuándo empezó a estar ocupado
+var fase = "";         // "visible" = en pantalla esperando; "fin" = ya terminó
+var vistoEn = 0;       // hora local en que lo vio aparecer
+var primera = true;    // primera consulta después de abrir/recargar la página
+var ocupadoDesde = 0;  // 0 = libre; si no, desde cuándo está ocupado
 
 async function procesar(d) {
   var ahora = Date.now();
   if (ocupadoDesde && ahora - ocupadoDesde > 45000) { console.log("[overlay] se destrabó solo"); ocupadoDesde = 0; }
   if (ocupadoDesde) return;
-  if (!d || !d.pokemon) return;
+  if (!d || !d.pokemon) { primera = false; return; }
   var id = String(d.spawn_ts);
-  var spawn = ts(d.spawn_ts), tAt = ts(d.atrapado_ts);
-  var viejo = !DEMO && spawn && ahora - spawn > ESCAPA_MS;
   ocupadoDesde = ahora;
   try {
     if (id !== idActual) {                       // pokémon nuevo
-      idActual = id;
+      idActual = id; vistoEn = ahora;
       if (d.atrapado) {
         fase = "fin";
-        // lo atraparon antes de que el overlay lo viera: se anima igual si fue hace poco
-        if (DEMO || (tAt && ahora - tAt < RECIENTE_MS)) {
+        // se spawneó y lo atraparon entre dos consultas: se anima igual (salvo al abrir la página)
+        if (DEMO || !primera) {
           console.log("[overlay] captura rápida:", d.pokemon);
           await preparar(d); poke.style.opacity = 1; await capturar(d);
         }
         return;
       }
-      if (viejo) { fase = "fin"; return; }
-      console.log("[overlay] aparece:", d.pokemon);
+      console.log("[overlay] aparece:", d.pokemon, "#" + d.numero);
       fase = "visible";
       await aparecer(d);
       return;
     }
     if (fase === "visible") {                    // el mismo pokémon sigue en pantalla
       if (d.atrapado) { fase = "fin"; console.log("[overlay] atrapado:", d.pokemon); await capturar(d); }
-      else if (viejo) { fase = "fin"; console.log("[overlay] se escapó:", d.pokemon); await escapar(d); }
+      else if (!DEMO && ahora - vistoEn > ESCAPA_MS) { fase = "fin"; console.log("[overlay] se escapó:", d.pokemon); await escapar(d); }
     }
   } catch (e) {
     console.log("[overlay] error:", e);
     try { limpiar(); } catch (e2) {}
-  } finally { ocupadoDesde = 0; }
+  } finally { ocupadoDesde = 0; primera = false; }
 }
 
 async function consultar() {
