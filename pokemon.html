@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Overlay Pokémon salvaje</title>
+<style>
+  html, body { margin:0; padding:0; background:transparent; overflow:hidden; width:1920px; height:1080px; font-family:"Trebuchet MS", Verdana, sans-serif; }
+  #stage { position:absolute; right:140px; bottom:90px; width:420px; height:420px; }
+  #poke { position:absolute; left:0; top:0; width:420px; height:420px; object-fit:contain; opacity:0; filter:drop-shadow(0 12px 10px rgba(0,0,0,.45)); }
+  #shadow { position:absolute; left:80px; bottom:-6px; width:260px; height:30px; border-radius:50%; background:rgba(0,0,0,.35); opacity:0; filter:blur(6px); }
+  #aura { position:absolute; left:-30px; top:-30px; width:480px; height:480px; border-radius:50%; opacity:0;
+          background:radial-gradient(circle, rgba(255,215,0,.55) 0%, rgba(255,170,0,.25) 45%, rgba(255,170,0,0) 70%); }
+  #aura.on { opacity:1; animation:pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { transform:scale(.92); opacity:.8 } 50% { transform:scale(1.08); opacity:1 } }
+  #label { position:absolute; left:50%; top:-64px; transform:translateX(-50%); white-space:nowrap; padding:10px 26px; border-radius:40px;
+           font-size:34px; font-weight:800; color:#fff; background:rgba(20,24,40,.82); border:3px solid #fff; opacity:0; text-shadow:0 2px 0 rgba(0,0,0,.5); }
+  #label.especial { background:linear-gradient(90deg,#b8860b,#ffd700,#b8860b); color:#2a1d00; border-color:#fff3b0; text-shadow:none; }
+  #ball { position:absolute; width:90px; height:90px; border-radius:50%; opacity:0; z-index:5;
+          background:linear-gradient(#e53935 0 46%, #222 46% 54%, #fafafa 54% 100%);
+          border:5px solid #222; box-shadow:inset -8px -8px 0 rgba(0,0,0,.12), 0 6px 14px rgba(0,0,0,.4); box-sizing:border-box; }
+  #ball::after { content:""; position:absolute; left:50%; top:50%; width:26px; height:26px; margin:-13px 0 0 -13px; border-radius:50%;
+                 background:#fafafa; border:5px solid #222; box-sizing:border-box; }
+  #ball.ultra { background:linear-gradient(#222 0 46%, #222 46% 54%, #fafafa 54% 100%); background-image:linear-gradient(#2b2b2b 0 46%, #222 46% 54%, #fafafa 54% 100%); }
+  #flash { position:absolute; left:-60px; top:-60px; width:540px; height:540px; border-radius:50%; opacity:0; z-index:4;
+           background:radial-gradient(circle, #fff 0%, rgba(255,255,255,.7) 40%, rgba(255,255,255,0) 70%); }
+  .star { position:absolute; width:18px; height:18px; z-index:6; opacity:0; background:#ffe14d; clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%); }
+  #banner { position:absolute; right:140px; bottom:560px; width:420px; text-align:center; font-size:32px; font-weight:800; color:#fff; opacity:0;
+            padding:14px 18px; border-radius:18px; background:rgba(20,24,40,.85); border:3px solid #fff; box-sizing:border-box; text-shadow:0 2px 0 rgba(0,0,0,.5); }
+  #banner.ok { border-color:#5be37d; } #banner.fail { border-color:#ff6b6b; }
+  #banner small { display:block; font-size:22px; font-weight:600; opacity:.85; margin-top:4px; }
+</style>
+</head>
+<body>
+<div id="banner"></div>
+<div id="stage">
+  <div id="aura"></div>
+  <div id="label"></div>
+  <div id="shadow"></div>
+  <img id="poke" alt="">
+  <div id="flash"></div>
+  <div id="ball"></div>
+</div>
+
+<script>
+/* ======== CONFIGURACIÓN ======== */
+var URL_ESTADO   = "https://script.google.com/macros/s/AKfycbzEPeBUn4Usq6sjKwBlh5xJJvFncVP4D1vqLB9tDL0ZdGbCHsq5loNvBvhTg6i1yxx4/exec?action=estado";
+var POLL_MS      = 2500;      // cada cuánto consulta el estado
+var ESCAPA_MS    = 5 * 60000; // si nadie lo atrapa en este tiempo, se escapa
+var RECIENTE_MS  = 15000;     // al cargar la página, una captura más vieja que esto no se anima
+var DEMO         = /[?&]demo=1/.test(location.search);
+
+var $ = function (id) { return document.getElementById(id); };
+var poke = $("poke"), ball = $("ball"), flash = $("flash"), aura = $("aura"),
+    label = $("label"), banner = $("banner"), shadow = $("shadow"), stage = $("stage");
+
+var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+function ts(v) { if (!v) return 0; var n = Number(v); if (!isNaN(n) && n > 0) return n < 1e12 ? n * 1000 : n; var d = Date.parse(v); return isNaN(d) ? 0 : d; }
+function anim(el, kf, opt) { return el.animate(kf, Object.assign({ fill: "forwards" }, opt)).finished; }
+
+function spriteUrls(n) {
+  var base = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/";
+  return [base + "other/official-artwork/" + n + ".png", base + n + ".png"];
+}
+function cargarSprite(n) {
+  return new Promise(function (res) {
+    var urls = spriteUrls(n), i = 0;
+    poke.onload = function () { res(); };
+    poke.onerror = function () { i++; if (i < urls.length) poke.src = urls[i]; else res(); };
+    poke.src = urls[0];
+  });
+}
+
+/* ======== ANIMACIONES ======== */
+function limpiar() {
+  [poke, ball, flash, aura, label, banner, shadow].forEach(function (e) { e.getAnimations().forEach(function (a) { a.cancel(); }); });
+  poke.style.opacity = 0; ball.style.opacity = 0; flash.style.opacity = 0; label.style.opacity = 0; banner.style.opacity = 0; shadow.style.opacity = 0;
+  aura.classList.remove("on"); label.classList.remove("especial");
+  document.querySelectorAll(".star").forEach(function (s) { s.remove(); });
+}
+
+async function aparecer(d) {
+  limpiar();
+  await cargarSprite(d.numero);
+  var especial = Number(d.categoria) === 3;
+  label.textContent = especial ? "★ " + d.pokemon + " ★" : d.pokemon;
+  if (especial) { label.classList.add("especial"); aura.classList.add("on"); }
+  anim(shadow, [{ opacity: 0, transform: "scale(.4)" }, { opacity: 1, transform: "scale(1)" }], { duration: 500 });
+  await anim(poke, [
+    { opacity: 0, transform: "translateY(-260px) scale(.7)" },
+    { opacity: 1, transform: "translateY(0) scale(1.08)", offset: .7 },
+    { opacity: 1, transform: "translateY(0) scale(1)" }
+  ], { duration: 700, easing: "cubic-bezier(.3,.9,.4,1)" });
+  anim(label, [{ opacity: 0, transform: "translateX(-50%) translateY(10px)" }, { opacity: 1, transform: "translateX(-50%) translateY(0)" }], { duration: 400 });
+  // respiración suave mientras espera
+  poke.animate([{ transform: "translateY(0)" }, { transform: "translateY(-10px)" }, { transform: "translateY(0)" }],
+               { duration: 2200, iterations: Infinity, easing: "ease-in-out" });
+}
+
+async function capturar(d) {
+  var quien = d.atrapado_por || "alguien";
+  var cx = 210, cy = 210;                       // centro del Pokémon dentro del stage
+  var sx = -900, sy = 380;                      // origen del lanzamiento (fuera, abajo-izquierda)
+  poke.getAnimations().forEach(function (a) { a.cancel(); });
+  poke.style.opacity = 1;
+  ball.style.opacity = 1;
+  // 1) lanzamiento en arco
+  var arco = [], pasos = 24;
+  for (var i = 0; i <= pasos; i++) {
+    var t = i / pasos;
+    arco.push({ transform: "translate(" + (sx + (cx - 45 - sx) * t) + "px," + (sy + (cy - 45 - sy) * t - Math.sin(Math.PI * t) * 420) + "px) rotate(" + (t * 900) + "deg)" });
+  }
+  await anim(ball, arco, { duration: 900, easing: "ease-in" });
+  // 2) impacto: destello y el Pokémon se encoge hacia la bola
+  anim(flash, [{ opacity: 0, transform: "scale(.2)" }, { opacity: 1, transform: "scale(1)", offset: .35 }, { opacity: 0, transform: "scale(1.2)" }], { duration: 650 });
+  anim(poke, [
+    { transform: "scale(1)", filter: "brightness(1) drop-shadow(0 12px 10px rgba(0,0,0,.45))" },
+    { transform: "scale(.5)", filter: "brightness(6) saturate(0)", offset: .6 },
+    { transform: "scale(0)", filter: "brightness(9) saturate(0)", opacity: 0 }
+  ], { duration: 600, easing: "ease-in" });
+  anim(label, [{ opacity: 1 }, { opacity: 0 }], { duration: 300 });
+  anim(shadow, [{ opacity: 1 }, { opacity: .5 }], { duration: 600 });
+  aura.classList.remove("on");
+  await sleep(550);
+  // 3) cae al suelo con rebote
+  await anim(ball, [
+    { transform: "translate(" + (cx - 45) + "px," + (cy - 45) + "px)" },
+    { transform: "translate(" + (cx - 45) + "px," + (cy + 120) + "px)", offset: .55 },
+    { transform: "translate(" + (cx - 45) + "px," + (cy + 70) + "px)", offset: .72 },
+    { transform: "translate(" + (cx - 45) + "px," + (cy + 120) + "px)" }
+  ], { duration: 700, easing: "ease-in-out" });
+  // 4) tres sacudidas
+  var base = "translate(" + (cx - 45) + "px," + (cy + 120) + "px)";
+  for (var k = 0; k < 3; k++) {
+    await sleep(380);
+    await anim(ball, [
+      { transform: base + " rotate(0deg)" }, { transform: base + " rotate(-28deg)", offset: .3 },
+      { transform: base + " rotate(24deg)", offset: .65 }, { transform: base + " rotate(0deg)" }
+    ], { duration: 520, easing: "ease-in-out" });
+  }
+  await sleep(450);
+  // 5) "click": brillo y estrellas
+  anim(ball, [{ filter: "brightness(1)" }, { filter: "brightness(2.2)" }, { filter: "brightness(1)" }], { duration: 500 });
+  for (var s = 0; s < 8; s++) {
+    var st = document.createElement("div"); st.className = "star"; stage.appendChild(st);
+    var ang = (Math.PI * 2 * s) / 8, bx = cx - 9, by = cy + 150;
+    anim(st, [
+      { opacity: 1, transform: "translate(" + bx + "px," + by + "px) scale(.4)" },
+      { opacity: 0, transform: "translate(" + (bx + Math.cos(ang) * 150) + "px," + (by + Math.sin(ang) * 150) + "px) scale(1.5) rotate(200deg)" }
+    ], { duration: 900, easing: "ease-out" }).then(function () { });
+  }
+  banner.className = "ok";
+  banner.innerHTML = "¡" + esc(quien) + " atrapó a " + esc(d.pokemon) + "!" + (Number(d.categoria) === 3 ? "<small>★ ¡Pokémon especial! ★</small>" : "");
+  anim(banner, [{ opacity: 0, transform: "translateY(20px) scale(.9)" }, { opacity: 1, transform: "translateY(0) scale(1)" }], { duration: 450 });
+  await sleep(5000);
+  await Promise.all([anim(banner, [{ opacity: 1 }, { opacity: 0 }], { duration: 600 }), anim(ball, [{ opacity: 1 }, { opacity: 0 }], { duration: 600 }), anim(shadow, [{ opacity: .5 }, { opacity: 0 }], { duration: 600 })]);
+  limpiar();
+}
+
+async function escapar(d) {
+  poke.getAnimations().forEach(function (a) { a.cancel(); });
+  poke.style.opacity = 1;
+  banner.className = "fail";
+  banner.innerHTML = "¡" + esc(d.pokemon) + " se escapó!";
+  anim(banner, [{ opacity: 0 }, { opacity: 1 }], { duration: 400 });
+  aura.classList.remove("on");
+  await Promise.all([
+    anim(poke, [{ transform: "translateX(0)", opacity: 1 }, { transform: "translateX(500px)", opacity: 0 }], { duration: 900, easing: "ease-in" }),
+    anim(label, [{ opacity: 1 }, { opacity: 0 }], { duration: 400 }),
+    anim(shadow, [{ opacity: 1 }, { opacity: 0 }], { duration: 600 })
+  ]);
+  await sleep(2500);
+  await anim(banner, [{ opacity: 1 }, { opacity: 0 }], { duration: 500 });
+  limpiar();
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+/* ======== LÓGICA ======== */
+var actual = null;     // spawn_ts que se está mostrando
+var ocupado = false;
+var primera = true;
+
+async function procesar(d) {
+  if (ocupado) return;
+  if (!d || !d.pokemon) return;
+  var id = String(d.spawn_ts);
+  var spawn = ts(d.spawn_ts), ahora = Date.now();
+  try {
+    if (id !== actual) {
+      // pokémon nuevo
+      if (d.atrapado) { actual = id; return; }                       // ya estaba atrapado antes de que cargara la página
+      if (!DEMO && spawn && ahora - spawn > ESCAPA_MS) { actual = id; return; } // demasiado viejo
+      ocupado = true; actual = id;
+      await aparecer(d);
+      ocupado = false;
+      return;
+    }
+    // mismo pokémon: ¿cambió a atrapado?
+    if (d.atrapado && actual === id && !d._hecho) {
+      var tAt = ts(d.atrapado_ts);
+      if (!DEMO && primera && tAt && ahora - tAt > RECIENTE_MS) { actual = id + "x"; return; }
+      ocupado = true; actual = id + "x";
+      await capturar(d);
+      ocupado = false;
+      return;
+    }
+    // sin atrapar y pasó el tiempo: se escapa
+    if (!d.atrapado && spawn && ahora - spawn > ESCAPA_MS && actual === id) {
+      ocupado = true; actual = id + "x";
+      await escapar(d);
+      ocupado = false;
+    }
+  } finally { ocupado = false; primera = false; }
+}
+
+async function consultar() {
+  try {
+    var r = await fetch(URL_ESTADO + "&_=" + Date.now(), { cache: "no-store" });
+    var d = await r.json();
+    await procesar(d);
+  } catch (e) { /* reintenta en el próximo ciclo */ }
+}
+
+/* ======== MODO DEMO (?demo=1): repite todo el ciclo ======== */
+var DEMO_LISTA = [
+  { pokemon: "Charizard", numero: 6,   categoria: 2, usuario: "taiki_02" },
+  { pokemon: "Mewtwo",    numero: 150, categoria: 3, usuario: "viewer123" },
+  { pokemon: "Gengar",    numero: 94,  categoria: 2, usuario: "pokefan" },
+  { pokemon: "Rayquaza",  numero: 384, categoria: 3, usuario: "taiki_02" }
+];
+async function demo() {
+  var i = 0;
+  while (true) {
+    var p = DEMO_LISTA[i++ % DEMO_LISTA.length], t = Date.now();
+    await procesar({ pokemon: p.pokemon, numero: p.numero, categoria: p.categoria, spawn_ts: t, atrapado: false });
+    await sleep(3500);
+    await procesar({ pokemon: p.pokemon, numero: p.numero, categoria: p.categoria, spawn_ts: t, atrapado: true, atrapado_por: p.usuario, atrapado_ts: Date.now() });
+    await sleep(1500);
+  }
+}
+
+if (DEMO) { demo(); } else { consultar(); setInterval(consultar, POLL_MS); }
+</script>
+</body>
+</html>
