@@ -55,19 +55,38 @@ var poke = $("poke"), ball = $("ball"), flash = $("flash"), aura = $("aura"),
 
 var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
 function ts(v) { if (!v) return 0; var n = Number(v); if (!isNaN(n) && n > 0) return n < 1e12 ? n * 1000 : n; var d = Date.parse(v); return isNaN(d) ? 0 : d; }
-function anim(el, kf, opt) { return el.animate(kf, Object.assign({ fill: "forwards" }, opt)).finished; }
+function anim(el, kf, opt) { var a = el.animate(kf, Object.assign({ fill: "forwards" }, opt)); return a.finished.catch(function () {}); }
 
-function spriteUrls(n) {
-  var base = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/";
-  return [base + "other/official-artwork/" + n + ".png", base + n + ".png"];
+var BALL_SVG = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="#fafafa" stroke="#222" stroke-width="6"/><path d="M4 50a46 46 0 0 1 92 0z" fill="#e53935" stroke="#222" stroke-width="6"/><circle cx="50" cy="50" r="12" fill="#fafafa" stroke="#222" stroke-width="6"/></svg>');
+function spriteUrls(d) {
+  var n = parseInt(d.numero, 10), out = [];
+  if (n > 0) {
+    out.push("https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/other/official-artwork/" + n + ".png");
+    out.push("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/" + n + ".png");
+    out.push("https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/" + n + ".png");
+    out.push("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/" + n + ".png");
+  }
+  var slug = String(d.pokemon || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
+  if (slug) out.push("https://play.pokemonshowdown.com/sprites/ani/" + slug + ".gif");
+  return out;
 }
-function cargarSprite(n) {
+function probar(url) {
   return new Promise(function (res) {
-    var urls = spriteUrls(n), i = 0;
-    poke.onload = function () { res(); };
-    poke.onerror = function () { i++; if (i < urls.length) poke.src = urls[i]; else res(); };
-    poke.src = urls[0];
+    var im = new Image();
+    var t = setTimeout(function () { im.onload = im.onerror = null; res(false); }, 6000);
+    im.onload = function () { clearTimeout(t); res(true); };
+    im.onerror = function () { clearTimeout(t); res(false); };
+    im.src = url;
   });
+}
+async function cargarSprite(d) {
+  var urls = spriteUrls(d);
+  for (var i = 0; i < urls.length; i++) {
+    if (await probar(urls[i])) { poke.src = urls[i]; return true; }
+  }
+  console.log("[overlay] no se pudo cargar el sprite de", d.pokemon, d.numero);
+  poke.src = BALL_SVG;   // respaldo: que nunca quede vacío ni se trabe
+  return false;
 }
 
 /* ======== ANIMACIONES ======== */
@@ -78,12 +97,16 @@ function limpiar() {
   document.querySelectorAll(".star").forEach(function (s) { s.remove(); });
 }
 
-async function aparecer(d) {
+async function preparar(d) {
   limpiar();
-  await cargarSprite(d.numero);
+  await cargarSprite(d);
   var especial = Number(d.categoria) === 3;
   label.textContent = especial ? "★ " + d.pokemon + " ★" : d.pokemon;
   if (especial) { label.classList.add("especial"); aura.classList.add("on"); }
+}
+
+async function aparecer(d) {
+  await preparar(d);
   anim(shadow, [{ opacity: 0, transform: "scale(.4)" }, { opacity: 1, transform: "scale(1)" }], { duration: 500 });
   await anim(poke, [
     { opacity: 0, transform: "translateY(-260px) scale(.7)" },
@@ -175,41 +198,45 @@ async function escapar(d) {
 function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
 
 /* ======== LÓGICA ======== */
-var actual = null;     // spawn_ts que se está mostrando
-var ocupado = false;
-var primera = true;
+var idActual = null;   // spawn que se está manejando
+var fase = "";         // "visible" = en pantalla esperando; "fin" = ya terminó (atrapado/escapado/ignorado)
+var ocupadoDesde = 0;  // 0 = libre; si no, cuándo empezó a estar ocupado
 
 async function procesar(d) {
-  if (ocupado) return;
+  var ahora = Date.now();
+  if (ocupadoDesde && ahora - ocupadoDesde > 45000) { console.log("[overlay] se destrabó solo"); ocupadoDesde = 0; }
+  if (ocupadoDesde) return;
   if (!d || !d.pokemon) return;
   var id = String(d.spawn_ts);
-  var spawn = ts(d.spawn_ts), ahora = Date.now();
+  var spawn = ts(d.spawn_ts), tAt = ts(d.atrapado_ts);
+  var viejo = !DEMO && spawn && ahora - spawn > ESCAPA_MS;
+  ocupadoDesde = ahora;
   try {
-    if (id !== actual) {
-      // pokémon nuevo
-      if (d.atrapado) { actual = id; return; }                       // ya estaba atrapado antes de que cargara la página
-      if (!DEMO && spawn && ahora - spawn > ESCAPA_MS) { actual = id; return; } // demasiado viejo
-      ocupado = true; actual = id;
+    if (id !== idActual) {                       // pokémon nuevo
+      idActual = id;
+      if (d.atrapado) {
+        fase = "fin";
+        // lo atraparon antes de que el overlay lo viera: se anima igual si fue hace poco
+        if (DEMO || (tAt && ahora - tAt < RECIENTE_MS)) {
+          console.log("[overlay] captura rápida:", d.pokemon);
+          await preparar(d); poke.style.opacity = 1; await capturar(d);
+        }
+        return;
+      }
+      if (viejo) { fase = "fin"; return; }
+      console.log("[overlay] aparece:", d.pokemon);
+      fase = "visible";
       await aparecer(d);
-      ocupado = false;
       return;
     }
-    // mismo pokémon: ¿cambió a atrapado?
-    if (d.atrapado && actual === id && !d._hecho) {
-      var tAt = ts(d.atrapado_ts);
-      if (!DEMO && primera && tAt && ahora - tAt > RECIENTE_MS) { actual = id + "x"; return; }
-      ocupado = true; actual = id + "x";
-      await capturar(d);
-      ocupado = false;
-      return;
+    if (fase === "visible") {                    // el mismo pokémon sigue en pantalla
+      if (d.atrapado) { fase = "fin"; console.log("[overlay] atrapado:", d.pokemon); await capturar(d); }
+      else if (viejo) { fase = "fin"; console.log("[overlay] se escapó:", d.pokemon); await escapar(d); }
     }
-    // sin atrapar y pasó el tiempo: se escapa
-    if (!d.atrapado && spawn && ahora - spawn > ESCAPA_MS && actual === id) {
-      ocupado = true; actual = id + "x";
-      await escapar(d);
-      ocupado = false;
-    }
-  } finally { ocupado = false; primera = false; }
+  } catch (e) {
+    console.log("[overlay] error:", e);
+    try { limpiar(); } catch (e2) {}
+  } finally { ocupadoDesde = 0; }
 }
 
 async function consultar() {
